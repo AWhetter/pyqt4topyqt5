@@ -56,7 +56,7 @@ def diff_parenthesis(line):
 
 
 class PyQt4ToPyQt5(object):
-    def __init__(self, source, dest, log, nopyqt5):
+    def __init__(self, source, dest, log, nopyqt5, in_module, out_module):
         self.log = log
         self.source = source
         self.dest = dest
@@ -66,6 +66,9 @@ class PyQt4ToPyQt5(object):
         self._has_qtwidget_import = False
         self._added_pyqtSignal = False
         self._pyqt5 = not nopyqt5
+
+        self.in_module = in_module
+        self.out_module = out_module
 
     def setup(self):
         self.print_('Processing file: `%s`' % self.source)
@@ -167,7 +170,7 @@ class PyQt4ToPyQt5(object):
         for line in lines:
             if self.is_code_line(line) and ('SIGNAL(' in line or 'SLOT(' in line or 'emit(' in line):
                 sig = True
-            if line.lstrip().startswith(('import ', 'from ')) and 'PyQt4' in line:
+            if line.lstrip().startswith(('import ', 'from ')) and self.in_module in line:
                 qt4 = True
                 if '.Qt' in line:
                     gui = True
@@ -327,7 +330,7 @@ class PyQt4ToPyQt5(object):
 
                 if self.is_code_line(l) and l.lstrip().startswith(('import ', 'from ')) and not '__future__' in l:
                     indent = self.get_token_indent(l)
-                    lines.insert(i+1, indent + 'from PyQt5.QtWidgets import *\n')
+                    lines.insert(i+1, indent + f'from {self.out_module}.QtWidgets import *\n')
                     return
 
                 i += 1
@@ -1330,7 +1333,7 @@ class PyQt4ToPyQt5(object):
             if self.is_code_line(line):
                 # TODO: Convert this to use regular expressions.
                 # use PyQt5 since this method is called after change_import_lines
-                line = line.replace('PyQt5.QtCore.QChar', 'QChar').replace('PyQt5.Qt.QChar', 'QChar')\
+                line = line.replace(f'{self.out_module}.QtCore.QChar', 'QChar').replace(f'{self.out_module}.Qt.QChar', 'QChar')\
                            .replace('QtCore.QChar', 'QChar').replace('Qt.QChar', 'QChar')
                 lines[idx] = line
                 if '].connect(' in line or 'pyqtSignal(' in line:
@@ -1370,7 +1373,7 @@ class PyQt4ToPyQt5(object):
                 # TODO: This does not handle QStringListModel properly.
                 # TODO: Convert this to use regular expressions.
                 # use PyQt5 since this method is called after change_import_lines
-                line = line.replace('PyQt5.QtCore.QString', 'QString').replace('PyQt5.Qt.QString', 'QString')\
+                line = line.replace(f'{self.out_module}.QtCore.QString', 'QString').replace(f'{self.out_module}.Qt.QString', 'QString')\
                            .replace('QtCore.QString', 'QString').replace('Qt.QString', 'QString')
                 lines[idx] = line
                 if '].connect(' in line or 'pyqtSignal(' in line:
@@ -1713,11 +1716,11 @@ class PyQt4ToPyQt5(object):
                     lines[count] = indent + '_fromUtf8 = lambda s: s\n'
                     continue
 
-            line = line.replace("PyQt4.QtCore.QString.fromUtf8(", "_fromUtf8(")\
-                       .replace("PyQt4.Qt.QString.fromUtf8(", "_fromUtf8(")\
-                       .replace("QtCore.QString.fromUtf8(", "_fromUtf8(")\
-                       .replace("Qt.QString.fromUtf8(", "_fromUtf8(")\
-                       .replace("QString.fromUtf8(", "_fromUtf8(")
+            line = line.replace(f'{self.in_module}.QtCore.QString.fromUtf8(', '_fromUtf8(')\
+                       .replace(f'{self.in_module}.Qt.QString.fromUtf8(', '_fromUtf8(')\
+                       .replace('QtCore.QString.fromUtf8(', '_fromUtf8(')\
+                       .replace('Qt.QString.fromUtf8(', '_fromUtf8(')\
+                       .replace('QString.fromUtf8(', '_fromUtf8(')
             while True:
                 open_idx, close_idx = self.find_closing_parenthesis(line, '_fromUtf8')
                 if open_idx >= len(line):
@@ -1776,8 +1779,8 @@ class PyQt4ToPyQt5(object):
         signal = signal.replace("PyQt_PyObject", "'PyQt_PyObject'")
         if self._pyqt5:
             # TODO: Convert this to use regular expressions.
-            signal = signal.replace("PyQt4.QtCore.QString", "QString").replace("PyQt4.Qt.QString", "QString")\
-                           .replace("QtCore.QString", "QString").replace("Qt.QString", "QString")\
+            signal = signal.replace(f'{self.in_module}.QtCore.QString', 'QString').replace(f'{self.in_module}.Qt.QString', 'QString')\
+                           .replace('QtCore.QString', 'QString').replace('Qt.QString', 'QString')\
                            .replace("QString", "'QString'").replace("'QString'List", "'QStringList'")\
                            .replace("'QStringList'Model", "QStringListModel")
         else:
@@ -1838,7 +1841,7 @@ class PyQt4ToPyQt5(object):
         count = 0
         def set_qstandardpaths(txt):
             if self.modified['QStandardPaths']:
-                news.append(txt.replace('PyQt4', 'PyQt5') + '.QtCore import QStandardPaths\n')
+                news.append(txt.replace(self.in_module, self.out_module) + '.QtCore import QStandardPaths\n')
                 self.modified['QStandardPaths'] = False
 
         while count < len(lines):
@@ -1872,55 +1875,55 @@ class PyQt4ToPyQt5(object):
                 count += 1
                 continue
 
-            if ls_line.startswith('from PyQt4.QtCore ') and self.modified['QStandardPaths']:
-                news.append(line.replace('PyQt4', 'PyQt5').rstrip() + ', QStandardPaths\n')
+            if ls_line.startswith(f'from {self.in_module}.QtCore ') and self.modified['QStandardPaths']:
+                news.append(line.replace(self.in_module, self.out_module).rstrip() + ', QStandardPaths\n')
                 self.modified['QStandardPaths'] = False
 
-            elif ls_line.startswith('from PyQt4.QtCore ') and 'QChar' in line:
+            elif ls_line.startswith(f'from {self.in_module}.QtCore ') and 'QChar' in line:
                 elems = [c.strip() for c in line[25:].split(',')]
                 elems.remove('QChar')
                 if elems:
-                    news.append('from PyQt5.QtCore import ' + ', '.join(elems) + '\n')
+                    news.append(f'from {self.out_module}.QtCore import ' + ', '.join(elems) + '\n')
 
-            elif ls_line.startswith('from PyQt4 import '):
+            elif ls_line.startswith(f'from {self.in_module} import '):
                 line = self.refactor_modules_import(line)
                 if line:
                     txt = self.reindent_import_line(line)
                     news.append(txt)
                     set_qstandardpaths(line.split(' import ')[0])
 
-            elif ls_line.startswith('from PyQt4.Qt import '):
+            elif ls_line.startswith(f'from {self.in_module}.Qt import '):
                 parts = line.split('import ')
                 core, gui, wdg, pr, md, ogl, cm = self.sort_qt_classes(parts[1])
                 if core:
-                    stcore = "".join([parts[0].replace('PyQt4.Qt ',
-                                'PyQt5.QtCore import '), ', '.join(core)])
+                    stcore = "".join([parts[0].replace(f'{self.in_module}.Qt ',
+                                f'{self.out_module}.QtCore import '), ', '.join(core)])
                     txt = self.reindent_import_line(stcore)
                     news.append(txt)
                 if gui:
-                    stgui = "".join([parts[0].replace('PyQt4.Qt ',
-                                'PyQt5.QtGui import '), ', '.join(gui)])
+                    stgui = "".join([parts[0].replace(f'{self.in_module}.Qt ',
+                                f'{self.out_module}.QtGui import '), ', '.join(gui)])
                     txt = self.reindent_import_line(stgui)
                     news.append(txt)
                 if wdg:
-                    stwdg = "".join([parts[0].replace('PyQt4.Qt ',
-                                'PyQt5.QtWidgets import '), ', '.join(wdg)])
+                    stwdg = "".join([parts[0].replace(f'{self.in_module}.Qt ',
+                                f'{self.out_module}.QtWidgets import '), ', '.join(wdg)])
                     txt = self.reindent_import_line(stwdg)
                     news.append(txt)
                     self._has_qtwidget_import = True
                 if pr:
-                    stpr = "".join([parts[0].replace('PyQt4.Qt ',
-                                'PyQt5.QtPrintSupport import '), ', '.join(pr)])
+                    stpr = "".join([parts[0].replace(f'{self.in_module}.Qt ',
+                                f'{self.out_module}.QtPrintSupport import '), ', '.join(pr)])
                     txt = self.reindent_import_line(stpr)
                     news.append(txt)
                 if md:
-                    stmd = "".join([parts[0].replace('PyQt4.Qt ',
-                                'PyQt5.QtMultimedia import '), ', '.join(md)])
+                    stmd = "".join([parts[0].replace(f'{self.in_module}.Qt ',
+                                f'{self.out_module}.QtMultimedia import '), ', '.join(md)])
                     txt = self.reindent_import_line(stmd)
                     news.append(txt)
                 if ogl:
-                    stogl = "".join([parts[0].replace('PyQt4.Qt ',
-                                'PyQt5.QtOpenGL import '), ', '.join(ogl)])
+                    stogl = "".join([parts[0].replace(f'{self.in_module}.Qt ',
+                                f'{self.out_module}.QtOpenGL import '), ', '.join(ogl)])
                     txt = self.reindent_import_line(stogl)
                     news.append(txt)
                 if cm:
@@ -1928,34 +1931,34 @@ class PyQt4ToPyQt5(object):
                     news.append(txt)
                 set_qstandardpaths(line.split('.Qt')[0])
 
-            elif ls_line.startswith('from PyQt4.QtGui '):
+            elif ls_line.startswith(f'from {self.in_module}.QtGui '):
                 parts = line.split('import ')
                 core, gui, wdg, pr, md, cm = self.sort_qtgui_classes(parts[1])
                 if core:
-                    stcore = "".join([parts[0].replace('PyQt4.QtGui ',
-                                'PyQt5.QtCore import '), ', '.join(core)])
+                    stcore = "".join([parts[0].replace(f'{self.in_module}.QtGui ',
+                                f'{self.out_module}.QtCore import '), ', '.join(core)])
                     txt = self.reindent_import_line(stcore)
                     self._has_qtwidget_import = True
                     news.append(txt)
                 if gui:
-                    stgui = "".join([parts[0].replace('PyQt4', 'PyQt5'),
+                    stgui = "".join([parts[0].replace(self.in_module, self.out_module),
                                 'import ', ', '.join(gui)])
                     txt = self.reindent_import_line(stgui)
                     news.append(txt)
                 if wdg:
-                    stwdg = "".join([parts[0].replace('PyQt4.QtGui ',
-                                'PyQt5.QtWidgets import '), ', '.join(wdg)])
+                    stwdg = "".join([parts[0].replace(f'{self.in_module}.QtGui ',
+                                f'{self.out_module}.QtWidgets import '), ', '.join(wdg)])
                     txt = self.reindent_import_line(stwdg)
                     self._has_qtwidget_import = True
                     news.append(txt)
                 if pr:
-                    stpr = "".join([parts[0].replace('PyQt4.QtGui ',
-                                'PyQt5.QtPrintSupport import '), ', '.join(pr)])
+                    stpr = "".join([parts[0].replace(f'{self.in_module}.QtGui ',
+                                f'{self.out_module}.QtPrintSupport import '), ', '.join(pr)])
                     txt = self.reindent_import_line(stpr)
                     news.append(txt)
                 if md:
-                    stmd = "".join([parts[0].replace('PyQt4.QtGui ',
-                                'PyQt5.QtMultimedia import '), ', '.join(md)])
+                    stmd = "".join([parts[0].replace(f'{self.in_module}.QtGui ',
+                                f'{self.out_module}.QtMultimedia import '), ', '.join(md)])
                     txt = self.reindent_import_line(stmd)
                     news.append(txt)
                 if cm:
@@ -1963,22 +1966,22 @@ class PyQt4ToPyQt5(object):
                     news.append(txt)
                 set_qstandardpaths(line.split('.QtGui')[0])
 
-            elif ls_line.startswith('from PyQt4.QtWebKit '):
+            elif ls_line.startswith(f'from {self.in_module}.QtWebKit '):
                 parts = line.split('import ')
                 wb, wdg = self.sort_qtwebkit_classes(parts[1])
                 if wb:
-                    chain = "".join([parts[0].replace('PyQt4', 'PyQt5'),
+                    chain = "".join([parts[0].replace(self.in_module, self.out_module),
                                 'import ', ', '.join(wb)])
                     txt = self.reindent_import_line(chain)
                     news.append(txt)
                 if wdg:
-                    chain = "".join([parts[0].replace('PyQt4.QtWebKit',
-                                'PyQt5.QtWebKitWidgets'), 'import ', ', '.join(wdg)])
+                    chain = "".join([parts[0].replace(f'{self.in_module}.QtWebKit',
+                                f'{self.out_module}.QtWebKitWidgets'), 'import ', ', '.join(wdg)])
                     txt = self.reindent_import_line(chain)
                     news.append(txt)
 
             else:
-                line = line.replace('PyQt4', 'PyQt5')
+                line = line.replace(self.in_module, self.out_module)
                 news.append(line)
 
             count += 1
@@ -1992,7 +1995,7 @@ class PyQt4ToPyQt5(object):
         line -- the line
         """
         parts = line.split('import ')
-        chain = parts[0].replace('PyQt4', 'PyQt5') + 'import '
+        chain = parts[0].replace(self.in_module, self.out_module) + 'import '
         end = parts[1].replace('(', '').replace(')', '').replace('\\', '')
         modules = set([name.strip() for name in end.split(',')
                        if name.strip()])
@@ -2443,6 +2446,8 @@ class Main(object):
         self.write_diffs = False
         self.filename_diff = False
         self.nopyqt5 = False
+        self.in_module = 'PyQt4'
+        self.out_module = 'PyQt5'
         parser = argparse.ArgumentParser(description='Convert a source code '
                         'written for PyQt4 into a valid code for PyQt5')
         parser.add_argument("path",
@@ -2476,6 +2481,12 @@ class Main(object):
         parser.add_argument("--nopyqt5", action="store_true",
                         help="Only perform updates that are compatable with PyQt4."
                         "  Default: False")
+        parser.add_argument("--replace", default=self.in_module,
+                        help="The module to perform updates from."
+                        "  Default: " + self.in_module)
+        parser.add_argument("--replace-with", default=self.out_module,
+                        help="The module to perform updates to."
+                        "  Default: " + self.out_module)
         arg = parser.parse_args()
 
         if arg.path:
@@ -2502,8 +2513,6 @@ class Main(object):
             self.destdir = self.check_path(arg.o[0], True)
             if not self.destdir:
                 sys.exit()
-        else:
-            self.destdir = self.path
 
         if arg.nolog:
             self.log = None
@@ -2511,6 +2520,22 @@ class Main(object):
             self.log = 'pyqt4_to_pyqt4.log' if self.nopyqt5 else 'pyqt4_to_pyqt5.log'
             date = datetime.now().strftime("%A %d. %B %Y %H:%M")
             self.print_('**  %s  %s  **\nArgs: %s\n' % (self.log, date, sys.argv))
+
+        if arg.replace:
+            self.in_module = arg.replace
+
+        if arg.replace_with:
+            self.out_module = arg.replace_with
+
+        if not self.destdir:
+            ver = self.in_module if self.nopyqt5 else self.out_module
+            if os.path.isdir(self.path):
+                self.destdir = self.path + "_" + ver
+            elif not self.is_python_file(self.path):
+                self.destdir = "__" + ver + "__"
+            else:
+                f, e = os.path.splitext(self.path)
+                self.destdir = "".join([f, "_"+ver, e])
 
         self.prepare_changes(self.followlinks)
 
@@ -2546,13 +2571,9 @@ class Main(object):
         return False
 
     def prepare_changes(self, followlinks=False):
-        ver = "PyQt4" if self.nopyqt5 else "PyQt5"
-
         if os.path.isdir(self.path):
-            if self.destdir == self.path:
-                self.destdir = self.path + "_" + ver
-
-            self.copy_dir(self.destdir, self.path, followlinks=followlinks)
+            if self.destdir != self.path:
+                self.copy_dir(self.destdir, self.path, followlinks=followlinks)
             self.set_diff_option('dir')
             self.process_from_dir(self.destdir, followlinks=followlinks)
 
@@ -2560,21 +2581,15 @@ class Main(object):
             if not self.is_python_file(self.path):
                 # Assume this is a list of files
                 files, subdirs = self.read_filenames(self.path)
-                if self.destdir == self.path:
-                    self.destdir = "__" + ver + "__"
 
                 self.copy_files(self.destdir, subdirs, files)
                 self.set_diff_option('dir')
                 self.process_from_dir(self.destdir, followlinks=followlinks)
 
             else:
-                if self.destdir == self.path:
-                    f, e = os.path.splitext(self.path)
-                    self.destdir = "".join([f, "_"+ver, e])
-
                 if self.write_diff:
                     self.set_diff_option('file')
-                cnv = PyQt4ToPyQt5(self.path, self.destdir, self.log, self.nopyqt5)
+                cnv = PyQt4ToPyQt5(self.path, self.destdir, self.log, self.nopyqt5, self.in_module, self.out_module)
                 cnv.setup()
                 self.write_diff_file(self.destdir, self.path)
 
@@ -2584,17 +2599,15 @@ class Main(object):
             files.sort()
             for f in files:
                 fname = os.path.join(root, f)
-                cnv = PyQt4ToPyQt5(fname, fname, self.log, self.nopyqt5)
+                if not self.is_python_file(fname):
+                    continue
+                cnv = PyQt4ToPyQt5(fname, fname, self.log, self.nopyqt5, self.in_module, self.out_module)
                 cnv.setup()
                 self.write_diff_file(fname)
 
     def copy_dir(self, dest, orig, followlinks=False):
         self.copied = {}
-        try:
-            os.makedirs(dest)
-        except Exception as why:
-            sys.stdout.write("Can't create the dir: `%s`\nReason: %s\n" % (dest, why))
-            sys.exit()
+        os.makedirs(dest, exist_ok=True)
 
         if self.nosubdir:
             files = glob.glob(os.path.join(orig, '*.py'))
@@ -2608,7 +2621,7 @@ class Main(object):
 
             target = root.replace(orig, dest)
             for name in dirs:
-                os.makedirs(os.path.join(target, name))
+                os.makedirs(os.path.join(target, name), exist_ok=True)
 
             for name in files:
                 src = os.path.join(root, name)
